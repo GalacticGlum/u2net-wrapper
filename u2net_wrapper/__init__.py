@@ -241,10 +241,14 @@ class U2Net:
         input_image = np.asarray(Image.open(str(source_filepath)),  dtype=np.float)
         input_image = input_image / rescale_amount
 
-        a_layer = np.ones(shape=(output_shape[0], output_shape[1], 1))
-        rgba_inp = np.append(input_image, a_layer, axis=2)
-        processed_image = rgba_inp * rgba_out * rescale_amount
+        if input_image.shape[2] == 4:
+            rgba_inp = np.array(input_image)
+            rgba_inp[..., 3] = 1
+        else:
+            a_layer = np.ones(shape=(output_shape[0], output_shape[1], 1))
+            rgba_inp = np.append(input_image, a_layer, axis=2)
 
+        processed_image = rgba_inp * rgba_out * rescale_amount
         if destination_filepath is not None:
             Image.fromarray(processed_image.astype('uint8'), 'RGBA').save(str(destination_filepath))
 
