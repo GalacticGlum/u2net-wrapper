@@ -166,23 +166,6 @@ class U2Net:
         normalized = (prediction - lo) / (hi - lo)
         return normalized
 
-    def _save_output(source_filepath, destination_filepath, output):
-        """Save the output of the model."""
-        output_data = output.squeeze().cpu().data.numpy()
-
-        # Get source image dimensions (height, width)
-        source_image = io.imread(str(source_filepath))
-        source_image_dim = (source_image.shape[1], source_image.shape[0])
-
-        # Load and resize output image (to size of source)
-        output_image = Image.fromarray(output_data * 255).convert('RGB')
-        output_image = output_image.resize(
-            source_image_dim,
-            resample=Image.BILINEAR
-        )
-
-        output_image.save(str(destination_filepath))
-
     def segment_image(self, source_filepath, destination_filepath=None):
         """
         Segment an image
@@ -191,12 +174,13 @@ class U2Net:
             The path to the image file to segment.
         :param destination_filepath:
             The path to save the output. Defaults to None.
-
         :returns:
-            A tensor of image data representing the segmentation image.
+            A PIL Image object representing the segmentation map.
         """
-        input_image = U2Net._load_image(source_filepath).unsqueeze(0)
-        input_image = input_image.type(torch.FloatTensor)
+        source_filepath = str(source_filepath)
+        input_image, input_image_dim = U2Net._load_image(source_filepath)
+        input_image = input_image.unsqueeze(0).type(torch.FloatTensor)
+
         if torch.cuda.is_available():
             input_image = Variable(input_image.cuda())
         else:
@@ -205,16 +189,66 @@ class U2Net:
         outputs = self._model(input_image)
         segmentation_map = U2Net._normalize_prediction(outputs[0][:, 0, :, :])
 
-        if destination_filepath is not None and destination_filepath.is_file():
-            U2Net._save_output(
-                source_filepath,
-                destination_filepath,
-                segmentation_map
-            )
+        # Convert data to cpu
+        segmentation_map = segmentation_map.squeeze().cpu().data.numpy()
+
+        # Load and resize output image (to size of source)
+        segmentation_map = Image.fromarray(segmentation_map * 255).convert('RGB')
+        segmentation_map = segmentation_map.resize(
+            input_image_dim,
+            resample=Image.BILINEAR
+        )
+
+        if destination_filepath is not None:
+            segmentation_map.save(str(destination_filepath))
 
         # Delete outputs (to avoid memory leak?)
         del outputs
+
         return segmentation_map
+
+    def remove_background(self, source_filepath, destination_filepath=None,
+                          threshold=0.9, rescale_amount=255):
+        """
+        Removes the background of an image.
+
+        :param source_filepath:
+            The path to the image file to segment.
+        :param destination_filepath:
+            The path to save the output. Defaults to None.
+        :param threshold:
+            Threshold to keep pixel. Defaults to 0.9.
+        :param rescale_amount:
+            The max value of an element in the image data (used to normalize
+            the data into a 0 to 1 range). Defaults to 255.0 (for RGB colour space).
+        :returns:
+            A numpy array of image data representing the segmentation image.
+        """
+        output = np.asarray(self.segment_image(source_filepath), dtype=np.float)
+        output = output / rescale_amount
+
+        # Convert segmentation map into a binary mask
+        output[output > threshold] = 1
+        output[output <= threshold] = 0
+
+        output_shape = output.shape
+        a_layer_init = np.ones(shape=(output_shape[0], output_shape[1], 1))
+        mul_layer = np.expand_dims(output[:,:,0], axis=2)
+        a_layer = mul_layer * a_layer_init
+        rgba_out = np.append(output, a_layer, axis=2)
+
+        # Map to original image
+        input_image = np.asarray(Image.open(str(source_filepath)),  dtype=np.float)
+        input_image = input_image / rescale_amount
+
+        a_layer = np.ones(shape=(output_shape[0], output_shape[1], 1))
+        rgba_inp = np.append(input_image, a_layer, axis=2)
+        processed_image = rgba_inp * rgba_out * rescale_amount
+
+        if destination_filepath is not None:
+            Image.fromarray(processed_image.astype('uint8'), 'RGBA').save(str(destination_filepath))
+
+        return processed_image
 
     @staticmethod
     def _get_pretrained_checkpont(pretrained_model_name):
@@ -248,6 +282,8 @@ class U2Net:
     def _load_image(filepath):
         """Load an image from the given filepath into a format ready for the U-2-net model."""
         image = io.imread(str(filepath))
+        dim = (image.shape[1], image.shape[0])
+
         if len(image.shape) == 2:
             image = image[:, :, np.newaxis]
 
@@ -256,4 +292,4 @@ class U2Net:
             ImageToTensor(colour_space=0)
         ])
 
-        return image_transform(image)
+        return image_transform(image), dim
