@@ -222,7 +222,7 @@ class U2Net:
             The max value of an element in the image data (used to normalize
             the data into a 0 to 1 range). Defaults to 255.0 (for RGB colour space).
         :returns:
-            A numpy array of image data representing the segmentation image.
+            A PIL Image object representing the image with its background removed.
         """
         output = np.asarray(self.segment_image(source_filepath), dtype=np.float)
         output = output / rescale_amount
@@ -249,8 +249,9 @@ class U2Net:
             rgba_inp = np.append(input_image, a_layer, axis=2)
 
         processed_image = rgba_inp * rgba_out * rescale_amount
+        processed_image = Image.fromarray(processed_image.astype('uint8'), 'RGBA')
         if destination_filepath is not None:
-            Image.fromarray(processed_image.astype('uint8'), 'RGBA').save(str(destination_filepath))
+            processed_image.save(str(destination_filepath))
 
         return processed_image
 
