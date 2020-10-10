@@ -10,7 +10,11 @@ setuptools.setup(
     long_description=long_description,
     long_description_content_type='text/markdown',
     url='https://github.com/galacticglum/u2net-wrapper',
-    packages=setuptools.find_packages(),
+    packages=[
+        'u2net_wrapper',
+        'u2net_wrapper.contrib',
+        'u2net_wrapper.contrib.model'
+    ],
     install_requires=[
         'requests==2.24.0',
         'clint==0.5.1',
