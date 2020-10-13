@@ -127,7 +127,7 @@ class ImageToTensor:
         tmpImg = tmpImg.transpose((2, 0, 1))
         return torch.from_numpy(tmpImg)
 
-class InvalidImage(Exception):
+class InvalidImageError(Exception):
     """Raised when processing an invalid image."""
 
 class U2Net:
@@ -307,7 +307,7 @@ class U2Net:
         input_image = input_image / rescale_amount
 
         if len(input_image.shape) < 3:
-            raise InvalidImage('Image has invalid shape!')
+            raise InvalidImageError('Image has invalid shape!')
 
         if input_image.shape[2] == 4:
             rgba_inp = np.array(input_image)
