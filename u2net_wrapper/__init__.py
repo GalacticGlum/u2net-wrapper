@@ -207,13 +207,66 @@ class U2Net:
 
         return segmentation_map
 
-    def remove_background(self, source_filepath, destination_filepath=None,
+    def get_bounding_box(self, segmentation_map, threshold=0.9, rescale_amount=255):
+        """
+        Gets the bounding box given a segmentation map.
+
+        :param segmentation_map:
+            A PIL Image object representing the segmentation map.
+        :param threshold:
+            Threshold to keep pixel. Defaults to 0.9.
+        :param rescale_amount:
+            The max value of an element in the image data (used to normalize
+            the data into a 0 to 1 range). Defaults to 255.0 (for RGB colour space).
+        :returns:
+            A tuple containing four floats representing the two
+            opposite corners of the bounding box: x1, y1, x2, and y2,
+            in that order, where x1 and y1 make the top-left point, and
+            x2 and y2 make the bottom-left point of the bounding box.
+        """
+        output = np.asarray(segmentation_map, dtype=np.float)
+        output = output / rescale_amount
+
+        # Convert segmentation map into a binary mask
+        output[output > threshold] = 1
+        output[output <= threshold] = 0
+
+        output_layer = output[:, :, 2]
+
+        # Compute bounds
+        x1 = min(
+            np.where(output_layer[i] == 1)[0][0]
+            if len(np.where(output_layer[i] == 1)[0]) != 0 else output_layer.shape[0] + 1
+            for i in range(output_layer.shape[0])
+        )
+
+        x2 = max(
+            np.where(output_layer[i] == 1)[0][-1]
+            if len(np.where(output_layer[i] == 1)[0]) != 0 else 0
+            for i in range(output_layer.shape[0])
+        )
+
+        y1 = min(
+            np.where(output_layer.T[i] == 1)[0][0]
+            if len(np.where(output_layer.T[i] == 1)[0]) != 0 else output_layer.T.shape[0] + 1
+            for i in range(output_layer.T.shape[0])
+        )
+
+        y2 = max(
+            np.where(output_layer.T[i] == 1)[0][-1]
+            if len(np.where(output_layer.T[i] == 1)[0]) != 0 else 0
+            for i in range(output_layer.T.shape[0])
+        )
+
+        return (x1, y1, x2, y2)
+
+    def remove_background(self, segmentation_map, destination_filepath=None,
                           threshold=0.9, rescale_amount=255):
         """
         Removes the background of an image.
 
-        :param source_filepath:
-            The path to the image file to segment.
+        :param segmentation_map:
+            A PIL Image object representing the segmentation map.
         :param destination_filepath:
             The path to save the output. Defaults to None.
         :param threshold:
@@ -224,7 +277,7 @@ class U2Net:
         :returns:
             A PIL Image object representing the image with its background removed.
         """
-        output = np.asarray(self.segment_image(source_filepath), dtype=np.float)
+        output = np.asarray(segmentation_map, dtype=np.float)
         output = output / rescale_amount
 
         # Convert segmentation map into a binary mask
@@ -254,6 +307,30 @@ class U2Net:
             processed_image.save(str(destination_filepath))
 
         return processed_image
+
+    def remove_background_from_file(self, source_filepath, destination_filepath=None,
+                                    threshold=0.9, rescale_amount=255):
+        """
+        Removes the background of an image (given an image filepath).
+
+        :param source_filepath:
+            The path to the image file to segment.
+        :param destination_filepath:
+            The path to save the output. Defaults to None.
+        :param threshold:
+            Threshold to keep pixel. Defaults to 0.9.
+        :param rescale_amount:
+            The max value of an element in the image data (used to normalize
+            the data into a 0 to 1 range). Defaults to 255.0 (for RGB colour space).
+        :returns:
+            A PIL Image object representing the image with its background removed.
+        """
+        return self.remove_background(
+            self.segment_image(source_filepath),
+            destination_filepath=destination_filepath,
+            threshold=threshold,
+            rescale_amount=rescale_amount
+        )
 
     @staticmethod
     def _get_pretrained_checkpont(pretrained_model_name):
